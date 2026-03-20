@@ -1,7 +1,6 @@
 package expo.modules.dynamicappicon
 
 import android.app.Activity
-import android.app.ActivityManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.pm.PackageManager
@@ -82,23 +81,18 @@ private fun applyIconChange(activity: Activity) {
         }
 
         try {
-            // Get all launcher activities and disable all except the new one
-            val packageInfo = pm.getPackageInfo(
-                SharedObject.packageName,
-                PackageManager.GET_ACTIVITIES or PackageManager.GET_DISABLED_COMPONENTS
-            )
+            val iconComponents = getManagedIconComponents(pm)
 
-            packageInfo.activities?.forEach { activityInfo ->
-                val componentName = ComponentName(SharedObject.packageName, activityInfo.name)
+            iconComponents.forEach { componentName ->
                 val state = pm.getComponentEnabledSetting(componentName)
 
-                if (activityInfo.name != icon && state != PackageManager.COMPONENT_ENABLED_STATE_DISABLED) {
+                if (componentName.className != icon && state != PackageManager.COMPONENT_ENABLED_STATE_DISABLED) {
                     pm.setComponentEnabledSetting(
                         componentName,
                         PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
                         PackageManager.DONT_KILL_APP
                     )
-                    Log.i("IconChange", "Disabled component: ${activityInfo.name}")
+                    Log.i("IconChange", "Disabled component: ${componentName.className}")
                 }
             }
 
@@ -125,15 +119,11 @@ private fun applyIconChange(activity: Activity) {
 
 private fun ensureAtLeastOneComponentEnabled(context: Context) {
     val pm = SharedObject.pm ?: return
-    val packageInfo = pm.getPackageInfo(
-        SharedObject.packageName,
-        PackageManager.GET_ACTIVITIES or PackageManager.GET_DISABLED_COMPONENTS
-    )
+    val iconComponents = getManagedIconComponents(pm)
 
-    val hasEnabledComponent = packageInfo.activities?.any { activityInfo ->
-        val componentName = ComponentName(SharedObject.packageName, activityInfo.name)
+    val hasEnabledComponent = iconComponents.any { componentName ->
         pm.getComponentEnabledSetting(componentName) == PackageManager.COMPONENT_ENABLED_STATE_ENABLED
-    } ?: false
+    }
 
     if (!hasEnabledComponent) {
         val mainActivityName = "${SharedObject.packageName}.MainActivity"
@@ -149,6 +139,21 @@ private fun ensureAtLeastOneComponentEnabled(context: Context) {
             Log.e("IconChange", "Error enabling fallback MainActivity", e)
         }
     }
+}
+
+    private fun getManagedIconComponents(pm: PackageManager): List<ComponentName> {
+    val packageInfo = pm.getPackageInfo(
+        SharedObject.packageName,
+        PackageManager.GET_ACTIVITIES or PackageManager.GET_DISABLED_COMPONENTS
+    )
+    val mainActivityPrefix = "${SharedObject.packageName}.MainActivity"
+
+    return packageInfo.activities
+        ?.map { it.name }
+        ?.filter { it == mainActivityPrefix || it.startsWith(mainActivityPrefix) }
+        ?.distinct()
+        ?.map { ComponentName(SharedObject.packageName, it) }
+        ?: emptyList()
 }
 
     /**
